@@ -7,31 +7,32 @@ import retro
 import pandas as pd
 import pickle
 import numpy as np
+import json
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "-d",
     "--datapath",
-    default='.',
     type=str,
     help="Data path to look for events.tsv and .bk2 files. Should be the root of the mario dataset.",
 )
+
 parser.add_argument(
-    "-st",
-    "--stimuli",
-    default='./stimuli',
+    "-r",
+    "--replays_path",
     type=str,
-    help="Data path to look for the stimuli files (rom, state files, data.json etc...).",
-)
-parser.add_argument(
-    "-s",
-    "--scenesfile",
-    default=None,
-    type=str,
-    help="Path to the scenes file, a JSON file that contains info about the start and end positions to clip.",
+    help="Path to the replays dataset, containing .json files and sidecars with game variables.",
 )
 
-def create_runevents(runvars, scenes_info_dict, events_dataframe, FS=60):
+parser.add_argument(
+    "-c",
+    "--clips_path",
+    default=None,
+    type=str,
+    help="Path to the scenes dataset, containing JSON files with info about the start and end positions of each scene clip.",
+)
+
+def create_runevents(runvars, run_id, events_dataframe, CLIPS_PATH=None, FS=60):
     """Create a BIDS compatible events dataframe from game variables and start/duration info of repetitions
 
     Parameters
@@ -94,9 +95,10 @@ def create_runevents(runvars, scenes_info_dict, events_dataframe, FS=60):
             all_df.append(temp_df)
 
             # Scenes
-            temp_df = generate_scene_events(repvars, scenes_info_dict, FS=FS)
-            temp_df['onset'] = temp_df['onset'] + repvars['rep_onset']
-            all_df.append(temp_df)
+            if CLIPS_PATH is not None:
+                temp_df = generate_scene_events(repvars, idx, run_id, CLIPS_PATH, FS=FS)
+                temp_df['onset'] = temp_df['onset'] + repvars['rep_onset']
+                all_df.append(temp_df)
 
     try:
         events_df = pd.concat(all_df).sort_values(by='onset').reset_index(drop=True)
@@ -336,52 +338,50 @@ def generate_powerup_events(repvars, FS=60):
                                'frame_stop':frame_stop})
     return events_df
 
-def generate_scene_events(repvars, scenes_info_dict, FS=60):
+
+
+def generate_scene_events(repvars, bk2_idx, run, CLIPS_PATH, FS=60):
+    '''
+    Generates an events_df of clips relative to the beginning of the repetition.
+    '''
+
     onset = []
     duration = []
     trial_type = []
+    clip_codes = []
     level = []
     frame_start = []
     frame_stop = []
 
+    fname = repvars['filename'].split('/')[-1]
+    sub = fname.split('_')[0]
+    ses = fname.split('_')[1]
 
-    curr_level = repvars['filename'].split("/")[-1].split("_")[-2].split('-')[1]
-    if curr_level == 'w1l1': ## remove/replace later
-        n_frames_total = len(repvars['score'])
-        # Create player_x_pos from Hi and Lo
-        repvars['player_x_pos'] = []
-        for idx in range(n_frames_total):
-            repvars['player_x_pos'].append(repvars['player_x_posHi'][idx]*256 + repvars['player_x_posLo'][idx])
-        
-        # Look for clips
-        for current_scene in scenes_info_dict.keys():
-            print(current_scene)
-            scenes_info_found = []
-            print(f'Scene {current_scene} : start = {scenes_info_dict[current_scene]["start"]}, end = {scenes_info_dict[current_scene]["end"]}')
-            start_found = False
-            start_range = [x for x in range(scenes_info_dict[current_scene]['start']-2, scenes_info_dict[current_scene]['start']+2)]
-            ## TODO manage issue with bonus scenes
-            for frame_idx in range(1, n_frames_total):
-                if not start_found:
-                    # Look for start
-                    if repvars['player_x_pos'][frame_idx] in start_range:#>= scenes_info_dict[current_scene]['start'] and repvars['player_x_pos'][frame_idx-1] < scenes_info_dict[current_scene]['start'] and repvars['player_x_pos'][frame_idx] < scenes_info_dict[current_scene]['end']:
-                        start_idx = frame_idx
-                        start_found = True
-                else:
-                    # Look for end
-                    if repvars['player_x_pos'][frame_idx] >= scenes_info_dict[current_scene]['end'] and repvars['player_x_pos'][frame_idx-1] < scenes_info_dict[current_scene]['end']:
-                        end_idx = frame_idx
-                        start_found = False
-                        scenes_info_found.append([start_idx, end_idx])
-                    elif repvars['player_x_pos'][frame_idx] >= scenes_info_dict[current_scene]['start'] and repvars['player_x_pos'][frame_idx-1] < scenes_info_dict[current_scene]['start']:
-                        start_idx = frame_idx
-            for pat_idx, pattern in enumerate(scenes_info_found):
-                onset.append(pattern[0]/FS)
-                duration.append((pattern[1]-pattern[0])/FS)
-                trial_type.append(f'scene-{current_scene}')
-                level.append(repvars['level'])
-                frame_start.append(pattern[0])
-                frame_stop.append(pattern[1])
+    clips_found = {}
+    # Collect all jsons files corresponding to sub ses run in CLIPS_PATH
+    for root, folder, files in sorted(os.walk(CLIPS_PATH)):
+        if sub in root and ses in root:
+            for file in files:
+                file_bk2_idx = file.split('-')[-1][5:7]
+                if run in file:
+                    if file_bk2_idx == str(bk2_idx).zfill(2):
+                        if file.endswith('.json'):
+                            # Load json file
+                            json_path = op.join(root, file)
+                            with open(json_path, 'r') as f:
+                                clip_metadata = json.load(f)
+                            clip_code = str(clip_metadata['ClipCode'])
+                            start_frame = clip_metadata['StartFrame']
+                            end_frame = clip_metadata['EndFrame']
+                            scene = clip_metadata['SceneFullName']
+
+
+                            onset.append(start_frame/FS)
+                            duration.append((end_frame-start_frame)/FS)
+                            trial_type.append(f'scene-{scene}_code-{clip_code}')
+                            level.append(clip_metadata['LevelFullName'])
+                            frame_start.append(start_frame)
+                            frame_stop.append(end_frame)
 
     events_df = pd.DataFrame(data={'onset':onset,
                             'duration':duration,
@@ -400,31 +400,12 @@ def main(args):
         print("No data path specified. Searching files in this folder.")
     print(f'Generating annotations for the mario dataset in : {DATA_PATH}')
     # Import stimuli
-    if args.stimuli is None:
-        print("No stimuli path specified. Searching files in this folder.")
-        stimuli_path = op.join(os.getcwd(), "stimuli")
-        print(stimuli_path)
-    else:
-        stimuli_path = op.join(args.stimuli)
+    stimuli_path = op.join(DATA_PATH, 'stimuli')
     retro.data.Integrations.add_custom_path(stimuli_path)
 
-    # Load scenes info
-    SCENES_FILE = args.scenesfile
-    if SCENES_FILE is None:
-        SCENES_FILE = op.join(DATA_PATH, "scenes.json")
-    SCENES_FILE = op.join(DATA_PATH, 'code', 'scenes', "scenes_mastersheet.csv")
+    CLIPS_PATH = args.clips_path
 
-    
-    scenes_info = pd.read_csv(SCENES_FILE)
-
-    #scenes_info = correct_xscroll(scenes_info)
-    scenes_info_dict = {}
-    for idx, row in scenes_info.iterrows():
-        scene_id = f'w{row["World"]}l{row["Level"]}s{row["Scene"]}'
-        scenes_info_dict[scene_id] = {}
-        scenes_info_dict[scene_id]['start'] = row['Entry point']
-        scenes_info_dict[scene_id]['end'] = row['Exit point']
-
+    REPLAYS_PATH = args.replays_path
     
     # Walk through all folders looking for .bk2 files
     for root, folder, files in sorted(os.walk(DATA_PATH)):
@@ -432,28 +413,32 @@ def main(args):
             for file in files:
                 if "events.tsv" in file and not "annotated" in file:
                     run_events_file = op.join(root, file)
+                    run_id = file.split("_")[3]
                     events_annotated_fname = run_events_file.replace("_events.", "_desc-annotated_events.")
                     if not op.isfile(events_annotated_fname):
                         print(f"Processing : {file}")
                         events_dataframe = pd.read_table(run_events_file, index_col=0)
                         events_dataframe = events_dataframe[events_dataframe['trial_type']=='gym-retro_game'] # select only repetition events
                         events_dataframe = events_dataframe[['trial_type','onset', 'level', 'stim_file']].reset_index() # select only relevant columns
-
                         bk2_files = events_dataframe['stim_file'].values.tolist()
                         runvars = []
                         for bk2_idx, bk2_file in enumerate(bk2_files):
                             if bk2_file != "Missing file" and type(bk2_file) != float:
                                 print("Adding : " + bk2_file)
-                                if op.exists(bk2_file):
-                                    pkl_sidecar_fname = bk2_file.replace(".bk2", ".pkl")
-                                    with open(pkl_sidecar_fname, 'rb') as f:
-                                        repvars = pickle.load(f)
+                                sub = bk2_file.split('/')[0]
+                                ses = bk2_file.split('/')[1]
+                                filename = bk2_file.split('/')[-1]
+                                variables_sidecar_fname = op.join(REPLAYS_PATH, sub, ses, 'beh', 'variables', filename.replace('.bk2', '.json'))
+                                if op.exists(variables_sidecar_fname):
+                                    with open(variables_sidecar_fname, 'rb') as f:
+                                        repvars = json.load(f)
+                                    
                                     # Add info to repetition event
                                     events_dataframe.loc[events_dataframe['stim_file']==bk2_file, 'level'] = repvars['level'] # replace level value in the dataframe by the one in the repvars dict
                                     events_dataframe.loc[events_dataframe['stim_file']==bk2_file, 'frame_start'] = int(0)
                                     events_dataframe.loc[events_dataframe['stim_file']==bk2_file, 'frame_stop'] = int(len(repvars['score']))
                                     events_dataframe.loc[events_dataframe['stim_file']==bk2_file, 'duration'] = int(len(repvars['score']))/FS
-
+                                    
                                     # rename index column to rep_index
                                     events_dataframe.rename(columns={'index':'rep_index'}, inplace=True)
 
@@ -468,8 +453,8 @@ def main(args):
                         else:
                             phase = 'practice'
                         events_dataframe['phase'] = phase
+                        events_df = create_runevents(runvars, run_id, events_dataframe, CLIPS_PATH, FS=FS)
 
-                        events_df = create_runevents(runvars, scenes_info_dict, events_dataframe, FS=FS)
                         events_df.to_csv(events_annotated_fname, sep='\t', index=False)
                         
 if __name__ == "__main__":
