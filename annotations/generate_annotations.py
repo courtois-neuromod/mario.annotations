@@ -40,6 +40,22 @@ parser.add_argument(
     help="Path to save the annotated events files. If not specified, saves in the same folder as the input events.tsv files.",
 )
 
+parser.add_argument(
+    "--subjects",
+    "-sub",
+    nargs="+",
+    default=None,
+    help="List of subjects to process (e.g., sub-01 sub-02). If not specified, all subjects are processed.",
+)
+
+parser.add_argument(
+    "--sessions",
+    "-ses",
+    nargs="+",
+    default=None,
+    help="List of sessions to process (e.g., ses-001 ses-002). If not specified, all sessions are processed.",
+)
+
 
 def create_runevents(runvars, run_id, events_dataframe, CLIPS_PATH=None, FS=60):
     """Create a BIDS compatible events dataframe from game variables and start/duration info of repetitions
@@ -447,9 +463,28 @@ def main(args):
 
     OUTPUT_PATH = args.output_path
 
+    # Get subject/session filters
+    subjects = args.subjects
+    sessions = args.sessions
+
+    if subjects:
+        print(f"Filtering subjects: {', '.join(subjects)}")
+    if sessions:
+        print(f"Filtering sessions: {', '.join(sessions)}")
+
     # Walk through all folders looking for .bk2 files
     for root, folder, files in sorted(os.walk(DATA_PATH)):
         if not "sourcedata" in root:
+            # Check if this path matches subject filter
+            if subjects is not None:
+                if not any(sub in root for sub in subjects):
+                    continue
+
+            # Check if this path matches session filter
+            if sessions is not None:
+                if not any(ses in root for ses in sessions):
+                    continue
+
             for file in files:
                 if "events.tsv" in file and not "annotated" in file:
                     run_events_file = op.join(root, file)
