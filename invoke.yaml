@@ -1,9 +1,11 @@
 # Configuration for mario.annotations project
+# All values can be overridden via command-line flags
 
 # Dataset paths
-mario_dataset: ../mario
-output_dir: outputdata/annotated_events
+mario_dataset: ../mario                      # Path to mario dataset root
+stimuli_path: null                           # Path to stimuli (defaults to {mario_dataset}/stimuli)
+output_dir: ./      # Output directory for derivatives
 
-# Input paths
-replays_path: null  # Path to mario.replays output (required)
+# Input paths (required for create-annotations task)
+replays_path: ../mario.replays  # Path to mario.replays output (REQUIRED - must be set!)
 clips_path: null    # Path to mario.scenes output (optional, for scene events)
