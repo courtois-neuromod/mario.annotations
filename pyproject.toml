@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mario_annotations"
+version = "0.1"
+dependencies = [
+    "pandas",
+    "numpy",
+    "stable-retro",
+    "invoke",
+    "cneuromod_vg_utils @ git+https://github.com/courtois-neuromod/videogames.utils.git"
+]
+description = "A set of functions and code to generate annotated event files from Super Mario Bros. replay data in the CNeuroMod mario dataset."
+authors = [{name = "Yann Harel"}]
+license = {text = "MIT"}
+
+[tool.setuptools.packages.find]
+where = ["code"]
