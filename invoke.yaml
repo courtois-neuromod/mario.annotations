@@ -5,5 +5,5 @@ mario_dataset: ../mario
 output_dir: outputdata/annotated_events
 
 # Input paths
-replays_path: null  # Path to mario.replays output (required)
-clips_path: null    # Path to mario.scenes output (optional, for scene events)
+replays_path: ../mario.replays  # Path to mario.replays output (required)
+clips_path: ../mario.replays    # Path to mario.scenes output (optional, for scene events)
