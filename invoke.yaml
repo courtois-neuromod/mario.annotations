@@ -8,4 +8,4 @@ output_dir: ./      # Output directory for derivatives
 
 # Input paths (required for create-annotations task)
 replays_path: ../mario.replays  # Path to mario.replays output (REQUIRED - must be set!)
-clips_path: null    # Path to mario.scenes output (optional, for scene events)
+clips_path: ../mario.scenes    # Path to mario.scenes output (optional, for scene events)
