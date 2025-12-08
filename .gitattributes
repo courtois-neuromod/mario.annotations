@@ -1,1 +1,5 @@
-.git/annex/objects/VF/5V/MD5E-s84--ec0a8230adc8e55762f561eda695ca43/MD5E-s84--ec0a8230adc8e55762f561eda695ca43
+* annex.backend=MD5E
+**/.git* annex.largefiles=nothing
+.gitattributes annex.largefiles=nothing
+** annex.largefiles=anything
+
